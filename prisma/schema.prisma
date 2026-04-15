@@ -1,0 +1,246 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../backend/node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            Int             @id @default(autoincrement())
+  username      String          @unique
+  passwordHash  String          @map("password_hash")
+  name          String
+  role          Role            @default(STAFF)
+  isActive      Boolean         @default(true) @map("is_active")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  personalBoxes Box[]
+  pos           PurchaseOrder[]
+  transactions  Transaction[]
+
+  @@map("users")
+}
+
+model Category {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  createdAt DateTime  @default(now()) @map("created_at")
+  products  Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id            Int                 @id @default(autoincrement())
+  name          String
+  sku           String              @unique
+  categoryId    Int?                @map("category_id")
+  unit          String
+  description   String?
+  minStock      Int                 @default(0) @map("min_stock")
+  imageUrl      String?             @map("image_url")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+  boxProducts   BoxProduct[]
+  category      Category?           @relation(fields: [categoryId], references: [id])
+  poItems       PurchaseOrderItem[]
+  rackLocations RackLocation[]
+  stock         Stock?
+  transactions  Transaction[]
+
+  @@map("products")
+}
+
+model Stock {
+  id               Int      @id @default(autoincrement())
+  quantity         Int      @default(0)
+  lastUpdated      DateTime @default(now()) @updatedAt @map("last_updated")
+  reservedQuantity Int      @default(0) @map("reserved_quantity")
+  productId        Int      @unique @map("product_id")
+  product          Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("stock")
+}
+
+model RackLocation {
+  id        Int      @id @default(autoincrement())
+  rackCode  String   @map("rack_code")
+  row       String
+  level     Int
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  productId Int      @map("product_id")
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("rack_locations")
+}
+
+model Floor {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  racks     Rack[]
+
+  @@map("floors")
+}
+
+model Rack {
+  id        Int       @id @default(autoincrement())
+  letter    String
+  floorId   Int       @map("floor_id")
+  createdAt DateTime  @default(now())
+  floor     Floor     @relation(fields: [floorId], references: [id], onDelete: Cascade)
+  sections  Section[]
+
+  @@unique([floorId, letter])
+  @@map("racks")
+}
+
+model Section {
+  id        Int         @id @default(autoincrement())
+  number    Int
+  rackId    Int         @map("rack_id")
+  createdAt DateTime    @default(now())
+  levels    RackLevel[]
+  rack      Rack        @relation(fields: [rackId], references: [id], onDelete: Cascade)
+
+  @@unique([rackId, number])
+  @@map("sections")
+}
+
+model RackLevel {
+  id        Int      @id @default(autoincrement())
+  number    Int
+  sectionId Int      @map("section_id")
+  createdAt DateTime @default(now())
+  pallets   Pallet[]
+  section   Section  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([sectionId, number])
+  @@map("rack_levels")
+}
+
+model Pallet {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique
+  name        String?
+  rackLevelId Int       @map("rack_level_id")
+  createdAt   DateTime  @default(now())
+  boxes       Box[]
+  rackLevel   RackLevel @relation(fields: [rackLevelId], references: [id], onDelete: Cascade)
+
+  @@map("pallets")
+}
+
+model Box {
+  id           Int           @id @default(autoincrement())
+  code         String        @unique
+  name         String?
+  palletId     Int?          @map("pallet_id")
+  createdAt    DateTime      @default(now())
+  holderId     Int?          @map("holder_id")
+  isPersonal   Boolean       @default(false) @map("is_personal")
+  boxProducts  BoxProduct[]
+  holder       User?         @relation(fields: [holderId], references: [id])
+  pallet       Pallet?       @relation(fields: [palletId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@map("boxes")
+}
+
+model BoxProduct {
+  id               Int      @id @default(autoincrement())
+  boxId            Int      @map("box_id")
+  productId        Int      @map("product_id")
+  lotNumber        String?  @map("lot_number")
+  quantity         Int      @default(0)
+  reservedQuantity Int      @default(0) @map("reserved_quantity")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  box              Box      @relation(fields: [boxId], references: [id], onDelete: Cascade)
+  product          Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([boxId, productId, lotNumber])
+  @@map("box_products")
+}
+
+model Supplier {
+  id        Int             @id @default(autoincrement())
+  name      String
+  code      String          @unique
+  address   String?
+  phone     String?
+  createdAt DateTime        @default(now()) @map("created_at")
+  pos       PurchaseOrder[]
+
+  @@map("suppliers")
+}
+
+model PurchaseOrder {
+  id           Int                 @id @default(autoincrement())
+  poNumber     String              @unique @map("po_number")
+  supplierId   Int                 @map("supplier_id")
+  status       PurchaseOrderStatus @default(PENDING)
+  notes        String?
+  userId       Int                 @map("user_id")
+  createdAt    DateTime            @default(now()) @map("created_at")
+  products     PurchaseOrderItem[]
+  supplier     Supplier            @relation(fields: [supplierId], references: [id])
+  user         User                @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id          Int           @id @default(autoincrement())
+  poId        Int           @map("po_id")
+  quantity    Int
+  price       Float?
+  createdAt   DateTime      @default(now()) @map("created_at")
+  description String?
+  productId   Int           @map("product_id")
+  po          PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  product     Product       @relation(fields: [productId], references: [id])
+
+  @@map("purchase_order_items")
+}
+
+model Transaction {
+  id              Int             @id @default(autoincrement())
+  type            TransactionType
+  quantity        Int
+  referenceNo     String?         @map("reference_no")
+  userId          Int             @map("user_id")
+  note            String?
+  date            DateTime        @default(now())
+  createdAt       DateTime        @default(now()) @map("created_at")
+  boxId           Int?            @map("box_id")
+  purchaseOrderId Int?            @map("purchase_order_id")
+  productId       Int             @map("product_id")
+  box             Box?            @relation(fields: [boxId], references: [id], onDelete: Cascade)
+  product         Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  purchaseOrder   PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id])
+  user            User            @relation(fields: [userId], references: [id])
+
+  @@map("transactions")
+}
+
+enum Role {
+  ADMIN
+  PPIC
+  STAFF
+}
+
+enum TransactionType {
+  IN
+  OUT
+  ADJUST
+  MOVE
+}
+
+enum PurchaseOrderStatus {
+  PENDING
+  RECEIVED
+  CANCELLED
+}

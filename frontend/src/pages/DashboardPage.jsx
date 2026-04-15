@@ -1,24 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { getStock, getTransactions } from '../services/api';
-import { Package, TrendingDown, AlertTriangle, ArrowLeftRight, ArrowUp, ArrowDown } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-
-const SkeletonCard = () => (
-  <div className="kpi-card" style={{ opacity: 0.5 }}>
-    <div className="kpi-icon" style={{ background: 'var(--border)', width: 52, height: 52, borderRadius: 10 }} />
-    <div>
-      <div style={{ height: 28, width: 60, background: 'var(--border)', borderRadius: 6, marginBottom: 6 }} />
-      <div style={{ height: 13, width: 100, background: 'var(--border)', borderRadius: 6 }} />
-    </div>
-  </div>
-);
+import { 
+  Package, TrendingDown, AlertTriangle, ArrowLeftRight, ArrowUp, ArrowDown, 
+  ChevronRight, Box, Target, Clock, Activity
+} from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, Cell } from 'recharts';
 
 export default function DashboardPage() {
   const [stockData, setStockData] = useState(null);
   const [recentTx, setRecentTx]   = useState([]);
   const [chartData, setChartData]  = useState([]);
   const [loading, setLoading]      = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     Promise.all([
@@ -28,12 +22,12 @@ export default function DashboardPage() {
       setStockData(stock);
       setRecentTx(tx.transactions);
 
-      // Build chart data (last 7 days)
+      // Build chart data
       const days = [];
       for (let i = 6; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const label = d.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric' });
+        const label = d.toLocaleDateString('id-ID', { weekday: 'short' });
         const dateStr = d.toISOString().split('T')[0];
         const dayTx = tx.transactions.filter(t => t.date.startsWith(dateStr));
         days.push({
@@ -47,160 +41,206 @@ export default function DashboardPage() {
   }, []);
 
   const summary = stockData?.summary;
-  const lowItems = stockData?.stocks?.filter(s => s.quantity <= s.item.minStock && s.item.minStock > 0) || [];
+  const lowProducts = stockData?.stocks?.filter(s => (s.quantity <= s.product.minStock && s.product.minStock > 0) || s.quantity === 0) || [];
+
+  if (loading) return (
+    <div className="page-container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '80vh' }}>
+      <div className="spinner dark" style={{ width: 48, height: 48 }} />
+    </div>
+  );
 
   return (
-    <div className="page-container animate-fade">
-      <div className="page-header">
+    <div className="page-container animate-fade" style={{ padding: '40px 20px' }}>
+      
+      {/* ── BIG HEADER ── */}
+      <div className="page-header dashboard-header">
         <div>
-          <h1>Dashboard</h1>
-          <p>Ringkasan stok dan aktivitas gudang hari ini</p>
+           <h1 className="dashboard-title">Overview Gudang</h1>
+           <p className="dashboard-subtitle">Status operasional dan logistik real-time</p>
         </div>
-        <Link to="/scan" className="btn btn-primary">
-          <span>📷</span> Scan Barang
-        </Link>
+        <div className="dashboard-actions">
+           <Link to="/inventory" className="btn btn-ghost dashboard-btn">
+              Lihat Semua Stok
+           </Link>
+           <Link to="/search" className="btn btn-primary dashboard-btn-primary">
+              <Target size={20} /> Cari Lokasi Produk
+           </Link>
+        </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="kpi-grid">
-        {loading ? <>
-          <SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard />
-        </> : <>
-          <div className="kpi-card primary">
-            <div className="kpi-icon"><Package color="var(--primary)" size={24} /></div>
-            <div className="kpi-info">
-              <div className="kpi-value">{summary?.total ?? 0}</div>
-              <div className="kpi-label">Total Jenis Item</div>
-            </div>
+      {/* ── GIANT KPI CARDS ── */}
+      <div className="dashboard-kpi-grid">
+        
+        <div className="kpi-card glass primary">
+          <div className="kpi-card-header">
+             <div className="kpi-icon-wrapper"><Package size={32} /></div>
+             <Activity size={20} className="kpi-activity-icon" />
           </div>
-          <div className="kpi-card success">
-            <div className="kpi-icon"><ArrowLeftRight color="var(--success)" size={24} /></div>
-            <div className="kpi-info">
-              <div className="kpi-value">{summary?.totalQty?.toLocaleString('id-ID') ?? 0}</div>
-              <div className="kpi-label">Total Stok (semua unit)</div>
-            </div>
-          </div>
-          <div className="kpi-card warning">
-            <div className="kpi-icon"><AlertTriangle color="var(--warning)" size={24} /></div>
-            <div className="kpi-info">
-              <div className="kpi-value">{summary?.lowStock ?? 0}</div>
-              <div className="kpi-label">Stok Menipis</div>
-            </div>
-          </div>
-          <div className="kpi-card danger">
-            <div className="kpi-icon"><TrendingDown color="var(--danger)" size={24} /></div>
-            <div className="kpi-info">
-              <div className="kpi-value">{summary?.outOfStock ?? 0}</div>
-              <div className="kpi-label">Stok Habis</div>
-            </div>
-          </div>
-        </>}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 20 }}>
-        {/* Chart */}
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title">Aktivitas 7 Hari Terakhir</span>
-          </div>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={chartData} barSize={24} barGap={4}>
-              <XAxis dataKey="day" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
-              <Tooltip
-                contentStyle={{ background: '#131d35', border: '1px solid #1e2d4d', borderRadius: 10, color: '#e2e8f0' }}
-                cursor={{ fill: 'rgba(255,255,255,0.04)' }}
-              />
-              <Legend wrapperStyle={{ fontSize: 13, color: '#94a3b8' }} />
-              <Bar dataKey="Masuk"  fill="#10b981" radius={[4,4,0,0]} />
-              <Bar dataKey="Keluar" fill="#f43f5e" radius={[4,4,0,0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="kpi-value">{summary?.total ?? 0}</div>
+          <div className="kpi-label">Jenis Produk Terdaftar</div>
         </div>
 
-        {/* Low Stock Alert */}
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title">⚠️ Stok Menipis</span>
-            <Link to="/items?lowStock=true" className="btn btn-ghost btn-sm">Lihat semua</Link>
+        <div className="kpi-card glass success">
+          <div className="kpi-card-header">
+             <div className="kpi-icon-wrapper"><ArrowLeftRight size={32} /></div>
+             <ArrowUp size={20} className="kpi-activity-icon" />
           </div>
-          {lowItems.length === 0 ? (
-            <div className="empty-state" style={{ padding: '30px 16px' }}>
-              <p>✅ Semua stok aman</p>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {lowItems.slice(0, 6).map(s => (
-                <Link key={s.id} to={`/items/${s.item.id}`} style={{ textDecoration: 'none' }}>
-                  <div style={{
-                    padding: '10px 12px',
-                    background: 'var(--bg-surface)',
-                    borderRadius: 'var(--radius)',
-                    border: '1px solid var(--border)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    transition: 'var(--transition)',
+          <div className="kpi-value">{summary?.totalQty?.toLocaleString('id-ID') ?? 0}</div>
+          <div className="kpi-label">Total Fisik Produk</div>
+        </div>
+
+        <div 
+          className="kpi-card glass warning hover-card" 
+          onClick={() => navigate('/inventory', { state: { filter: 'low' } })}
+        >
+          <div className="kpi-card-header">
+             <div className="kpi-icon-wrapper"><AlertTriangle size={32} /></div>
+             <ChevronRight size={20} className="kpi-activity-icon" />
+          </div>
+          <div className="kpi-value">{summary?.lowStock ?? 0}</div>
+          <div className="kpi-label">Stok Hampir Habis</div>
+        </div>
+
+        <div className="kpi-card glass danger">
+          <div className="kpi-card-header">
+             <div className="kpi-icon-wrapper"><TrendingDown size={32} /></div>
+             <AlertTriangle size={20} className="kpi-activity-icon" />
+          </div>
+          <div className="kpi-value">{summary?.outOfStock ?? 0}</div>
+          <div className="kpi-label">Produk Kosong</div>
+        </div>
+
+      </div>
+
+      {/* ── CHARTS & TABLES ── */}
+      <div className="dashboard-main-grid">
+        
+        {/* Main Chart */}
+        <div className="card glass" style={{ padding: 24 }}>
+          <div className="card-header" style={{ marginBottom: 32 }}>
+            <h2 style={{ fontSize: 20, fontWeight: 700 }}>Aktivitas Keluar Masuk Produk</h2>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Statistik 7 hari terakhir</div>
+          </div>
+          <div style={{ height: 400, width: '100%' }}>
+            <ResponsiveContainer>
+              <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
+                <Tooltip 
+                  cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                  contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: 'var(--shadow-lg)' }}
+                />
+                <Legend iconType="circle" wrapperStyle={{ paddingTop: 20 }} />
+                <Bar dataKey="Masuk" fill="var(--success)" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="Keluar" fill="var(--danger)" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Low Stock List (The Drill down point) */}
+        <div className="card glass" style={{ padding: 24 }}>
+          <div className="card-header" style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700 }}>⚠️ Alert Stok</h2>
+            <Link to="/inventory" className="btn btn-ghost btn-sm">Lihat Semua</Link>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {lowProducts.length === 0 ? (
+               <div style={{ textAlign: 'center', padding: 40, opacity: 0.5 }}>
+                  <Package size={40} style={{ margin: '0 auto 12px' }} />
+                  <p>Seluruh stok tercukupi</p>
+               </div>
+            ) : (
+              lowProducts.slice(0, 8).map(s => (
+                <div 
+                  key={s.id} 
+                  className="card hover-card" 
+                  style={{ 
+                    padding: 16, background: 'rgba(0,0,0,0.1)', border: '1px solid var(--border)', 
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center' 
                   }}
-                    onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--warning)'}
-                    onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
-                  >
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{s.item.name}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{s.item.sku}</div>
-                    </div>
-                    <div className={`badge ${s.quantity === 0 ? 'badge-danger' : 'badge-warning'}`}>
-                      {s.quantity} {s.item.unit}
-                    </div>
+                  onClick={() => navigate(`/products/${s.product.id}`)}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.product.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{s.product.sku}</div>
                   </div>
-                </Link>
-              ))}
-            </div>
-          )}
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: s.quantity === 0 ? 'var(--danger)' : 'var(--warning)' }}>{s.quantity}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{s.product.unit}</div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+      </div>
+
+      {/* ── RECENT TRANSACTIONS ── */}
+      <div className="card glass" style={{ marginTop: 32, padding: 32 }}>
+        <div className="card-header" style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Clock size={24} color="var(--primary)" />
+            <h2 style={{ fontSize: 20, fontWeight: 700 }}>Log Transaksi Terakhir</h2>
+          </div>
+          <Link to="/transactions" className="btn btn-ghost btn-sm">Buka Semua Log</Link>
+        </div>
+        <div className="table-container" style={{ border: 'none' }}>
+           <table style={{ borderCollapse: 'separate', borderSpacing: '0 8px' }}>
+              <thead>
+                <tr style={{ background: 'transparent' }}>
+                  <th style={{ padding: '12px 20px', borderRadius: '12px 0 0 12px' }}>Tanggal</th>
+                  <th>Nama Produk</th>
+                  <th className="hide-mobile">Jenis</th>
+                  <th>Jumlah</th>
+                  <th className="hide-mobile">Referensi</th>
+                  <th className="hide-mobile" style={{ borderRadius: '0 12px 12px 0' }}>Operator</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentTx.map(tx => (
+                  <tr key={tx.id} style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+                    <td style={{ padding: '20px', borderRadius: '12px 0 0 12px', color: 'var(--text-muted)', fontSize: 13 }}>
+                      {new Date(tx.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 700 }}>{tx.product.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{tx.product.sku}</div>
+                    </td>
+                    <td className="hide-mobile">
+                      <div style={{ 
+                        display: 'flex', alignItems: 'center', gap: 6, 
+                        color: tx.type === 'IN' ? 'var(--success)' : 'var(--danger)',
+                        fontWeight: 700, fontSize: 13
+                      }}>
+                        {tx.type === 'IN' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+                        {tx.type === 'IN' ? 'MASUK' : 'KELUAR'}
+                      </div>
+                    </td>
+                    <td style={{ fontSize: 18, fontWeight: 800 }}>
+                      {tx.quantity} 
+                      <span className="hide-mobile" style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginLeft: 4 }}>{tx.product.unit}</span>
+                      <div className="show-mobile" style={{ fontSize: 10, color: tx.type === 'IN' ? 'var(--success)' : 'var(--danger)', fontWeight: 700 }}>
+                        {tx.type}
+                      </div>
+                    </td>
+                    <td className="hide-mobile" style={{ fontSize: 13, fontFamily: 'monospace', color: 'var(--text-muted)' }}>{tx.referenceNo || '—'}</td>
+                    <td className="hide-mobile" style={{ borderRadius: '0 12px 12px 0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                         <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>
+                            {tx.user.name[0]}
+                         </div>
+                         <span style={{ fontSize: 13 }}>{tx.user.name}</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+           </table>
         </div>
       </div>
 
-      {/* Recent Transactions */}
-      <div className="card" style={{ marginTop: 20 }}>
-        <div className="card-header">
-          <span className="card-title">Transaksi Terbaru</span>
-          <Link to="/transactions" className="btn btn-ghost btn-sm">Lihat semua</Link>
-        </div>
-        <div className="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Tanggal</th>
-                <th>Item</th>
-                <th>Tipe</th>
-                <th>Qty</th>
-                <th>Referensi</th>
-                <th>User</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentTx.length === 0 ? (
-                <tr><td colSpan={6}><div className="empty-state"><p>Belum ada transaksi</p></div></td></tr>
-              ) : recentTx.map(tx => (
-                <tr key={tx.id}>
-                  <td className="text-sm text-muted">{new Date(tx.date).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
-                  <td>
-                    <div style={{ fontWeight: 500 }}>{tx.item.name}</div>
-                    <div className="text-xs text-muted font-mono">{tx.item.sku}</div>
-                  </td>
-                  <td>
-                    <span className={`badge ${tx.type === 'IN' ? 'badge-success' : tx.type === 'OUT' ? 'badge-danger' : 'badge-warning'}`}>
-                      {tx.type === 'IN' ? <ArrowUp size={10} /> : tx.type === 'OUT' ? <ArrowDown size={10} /> : null}
-                      {tx.type}
-                    </span>
-                  </td>
-                  <td className="font-bold">{tx.quantity} <span className="text-muted text-sm">{tx.item.unit}</span></td>
-                  <td className="text-sm text-muted font-mono">{tx.referenceNo || '—'}</td>
-                  <td className="text-sm">{tx.user.name}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 }

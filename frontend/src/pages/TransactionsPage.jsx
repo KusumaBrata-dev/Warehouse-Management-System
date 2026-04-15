@@ -37,7 +37,7 @@ export default function TransactionsPage() {
   return (
     <div className="page-container animate-fade">
       <div className="page-header">
-        <div><h1>Riwayat Transaksi</h1><p>Catatan semua pergerakan stok</p></div>
+        <div><h1>Riwayat Transaksi</h1><p>Catatan semua pergerakan stok produk</p></div>
         <button id="export-btn" className="btn btn-success" onClick={handleExport}>
           <Download size={16} /> Export Excel
         </button>
@@ -49,6 +49,7 @@ export default function TransactionsPage() {
           <option value="">Semua Tipe</option>
           <option value="IN">Masuk (IN)</option>
           <option value="OUT">Keluar (OUT)</option>
+          <option value="MOVE">Pindah (MOVE)</option>
           <option value="ADJUST">Penyesuaian</option>
         </select>
         <input id="filter-start" type="date" className="form-control" style={{ width: 180 }} value={filters.startDate} onChange={e => set('startDate', e.target.value)} />
@@ -69,11 +70,10 @@ export default function TransactionsPage() {
           <thead>
             <tr>
               <th>Tanggal & Waktu</th>
-              <th>Item</th>
+              <th>Produk</th>
               <th>Tipe</th>
               <th>Jumlah</th>
               <th>No. Referensi</th>
-              <th>Supplier</th>
               <th>User</th>
               <th>Catatan</th>
             </tr>
@@ -82,21 +82,21 @@ export default function TransactionsPage() {
             {loading ? (
               Array(8).fill(0).map((_, i) => (
                 <tr key={i}>
-                  {Array(8).fill(0).map((_, j) => (
+                  {Array(7).fill(0).map((_, j) => (
                     <td key={j}><div style={{ height: 14, background: 'var(--border)', borderRadius: 4, animation: 'pulse 1.5s infinite' }} /></td>
                   ))}
                 </tr>
               ))
             ) : data.transactions.length === 0 ? (
-              <tr><td colSpan={8}><div className="empty-state"><p>Tidak ada transaksi ditemukan</p></div></td></tr>
+              <tr><td colSpan={7}><div className="empty-state"><p>Tidak ada transaksi ditemukan</p></div></td></tr>
             ) : data.transactions.map(tx => (
               <tr key={tx.id}>
                 <td className="text-sm text-muted" style={{ whiteSpace: 'nowrap' }}>
                   {new Date(tx.date).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                 </td>
                 <td>
-                  <div style={{ fontWeight: 600 }}>{tx.item.name}</div>
-                  <div className="text-xs font-mono" style={{ color: 'var(--primary)' }}>{tx.item.sku}</div>
+                  <div style={{ fontWeight: 600 }}>{tx.product.name}</div>
+                  <div className="text-xs font-mono" style={{ color: 'var(--primary)' }}>{tx.product.sku}</div>
                 </td>
                 <td>
                   <span className={`badge ${tx.type === 'IN' ? 'badge-success' : tx.type === 'OUT' ? 'badge-danger' : 'badge-warning'}`}>
@@ -109,10 +109,9 @@ export default function TransactionsPage() {
                   <span style={{ fontWeight: 700, color: tx.type === 'IN' ? 'var(--success)' : tx.type === 'OUT' ? 'var(--danger)' : 'var(--warning)' }}>
                     {tx.type === 'IN' ? '+' : tx.type === 'OUT' ? '-' : '='}{tx.quantity}
                   </span>
-                  <span className="text-muted text-sm"> {tx.item.unit}</span>
+                  <span className="text-muted text-sm"> {tx.product.unit}</span>
                 </td>
                 <td className="font-mono text-sm">{tx.referenceNo || '—'}</td>
-                <td className="text-sm">{tx.supplier?.name || '—'}</td>
                 <td className="text-sm">{tx.user.name}</td>
                 <td className="text-sm text-muted">{tx.note || '—'}</td>
               </tr>

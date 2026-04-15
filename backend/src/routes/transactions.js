@@ -8,11 +8,11 @@ transactionsRouter.use(authenticate);
 // GET /api/transactions — List with filters
 transactionsRouter.get('/', async (req, res, next) => {
   try {
-    const { type, itemId, startDate, endDate, page = 1, limit = 50 } = req.query;
+    const { type, productId, startDate, endDate, page = 1, limit = 50 } = req.query;
     const where = {};
 
     if (type) where.type = type;
-    if (itemId) where.itemId = parseInt(itemId);
+    if (productId) where.productId = parseInt(productId);
     if (startDate || endDate) {
       where.date = {};
       if (startDate) where.date.gte = new Date(startDate);
@@ -23,9 +23,8 @@ transactionsRouter.get('/', async (req, res, next) => {
       prisma.transaction.findMany({
         where,
         include: {
-          item: { select: { id: true, name: true, sku: true, unit: true } },
+          product: { select: { id: true, name: true, sku: true, unit: true } },
           user: { select: { id: true, name: true, role: true } },
-          supplier: { select: { id: true, name: true } },
         },
         orderBy: { date: 'desc' },
         skip: (parseInt(page) - 1) * parseInt(limit),
@@ -43,52 +42,127 @@ transactionsRouter.get('/', async (req, res, next) => {
 // POST /api/transactions — Create transaction (IN/OUT/ADJUST)
 transactionsRouter.post('/', async (req, res, next) => {
   try {
-    const { itemId, type, quantity, referenceNo, supplierId, note } = req.body;
-    if (!itemId || !type || !quantity) {
-      return res.status(400).json({ error: 'itemId, type, and quantity are required' });
+    const { productId, type, quantity, referenceNo, note, boxId, targetBoxId } = req.body;
+    if (!productId || !type || !quantity) {
+      return res.status(400).json({ error: 'productId, type, and quantity are required' });
     }
-    if (!['IN', 'OUT', 'ADJUST'].includes(type)) {
-      return res.status(400).json({ error: 'type must be IN, OUT, or ADJUST' });
+    if (!['IN', 'OUT', 'ADJUST', 'MOVE'].includes(type)) {
+      return res.status(400).json({ error: 'type must be IN, OUT, ADJUST, or MOVE' });
     }
     const qty = parseInt(quantity);
     if (qty <= 0) return res.status(400).json({ error: 'quantity must be positive' });
 
-    const result = await prisma.$transaction(async (tx) => {
-      // Get current stock
-      const stock = await tx.stock.findUnique({ where: { itemId: parseInt(itemId) } });
-      if (!stock) throw { status: 404, message: 'Item stock record not found' };
+    if (type === 'MOVE' && (!boxId || !targetBoxId)) {
+      return res.status(400).json({ error: 'Source box (boxId) and destination box (targetBoxId) are required for MOVE' });
+    }
 
-      let newQty;
-      if (type === 'IN') newQty = stock.quantity + qty;
-      else if (type === 'OUT') {
-        if (stock.quantity < qty) throw { status: 400, message: `Insufficient stock. Available: ${stock.quantity}` };
-        newQty = stock.quantity - qty;
+    const result = await prisma.$transaction(async (tx) => {
+      const pid = parseInt(productId);
+      
+      const stock = await tx.stock.findUnique({ where: { productId: pid } });
+      if (!stock) throw { status: 404, message: 'Product stock record not found' };
+
+      let globalDelta = 0;
+
+      // 1. Handle MOVE specially
+      if (type === 'MOVE') {
+        const sourceId = parseInt(boxId);
+        const destId = parseInt(targetBoxId);
+
+        // Decrease from source
+        const sourceBi = await tx.boxProduct.findUnique({ where: { boxId_productId_lotNumber: { boxId: sourceId, productId: pid, lotNumber: null } } });
+        if (!sourceBi || sourceBi.quantity < qty) {
+          throw { status: 400, message: `Stok di box asal tidak cukup. Tersedia: ${sourceBi?.quantity || 0}` };
+        }
+        await tx.boxProduct.update({
+          where: { boxId_productId_lotNumber: { boxId: sourceId, productId: pid, lotNumber: null } },
+          data: { quantity: sourceBi.quantity - qty }
+        });
+
+        // Increase in target
+        const destBi = await tx.boxProduct.findUnique({ where: { boxId_productId_lotNumber: { boxId: destId, productId: pid, lotNumber: null } } });
+        if (destBi) {
+          await tx.boxProduct.update({
+            where: { boxId_productId_lotNumber: { boxId: destId, productId: pid, lotNumber: null } },
+            data: { quantity: destBi.quantity + qty }
+          });
+        } else {
+          await tx.boxProduct.create({
+            data: { boxId: destId, productId: pid, quantity: qty }
+          });
+        }
+
+        globalDelta = 0; // Global stock doesn't change on MOVE
+      } else if (boxId) {
+        // 2. Handle Box Level (IN/OUT/ADJUST)
+        const bid = parseInt(boxId);
+        const boxProduct = await tx.boxProduct.findUnique({
+          where: { boxId_productId_lotNumber: { boxId: bid, productId: pid, lotNumber: null } }
+        });
+
+        const oldBoxQty = boxProduct ? boxProduct.quantity : 0;
+        let newBoxQty;
+
+        if (type === 'IN') {
+          newBoxQty = oldBoxQty + qty;
+          globalDelta = qty;
+        } else if (type === 'OUT') {
+          if (oldBoxQty < qty) throw { status: 400, message: `Stok di Box tidak cukup. Tersedia: ${oldBoxQty}` };
+          newBoxQty = oldBoxQty - qty;
+          globalDelta = -qty;
+        } else {
+          // ADJUST
+          newBoxQty = qty;
+          globalDelta = newBoxQty - oldBoxQty;
+        }
+
+        if (boxProduct) {
+          await tx.boxProduct.update({
+            where: { boxId_productId_lotNumber: { boxId: bid, productId: pid, lotNumber: null } },
+            data: { quantity: newBoxQty }
+          });
+        } else if (newBoxQty > 0) {
+          await tx.boxProduct.create({
+            data: { boxId: bid, productId: pid, quantity: newBoxQty }
+          });
+        }
+      } else if (type === 'ADJUST') {
+        // 3. Special Case: Global-only ADJUST for Syncing
+        globalDelta = qty - stock.quantity;
       } else {
-        // ADJUST — set to absolute value
-        newQty = qty;
+        // 4. Reject global-only IN/OUT as per user request
+        throw { status: 400, message: 'Transaksi IN/OUT wajib memilik target Box penyimpanan agar data stok sinkron.' };
       }
 
-      // Update stock
-      await tx.stock.update({ where: { itemId: parseInt(itemId) }, data: { quantity: newQty } });
+      // 4. Update Global Stock (only if globalDelta != 0)
+      let finalGlobalQty = stock.quantity;
+      if (globalDelta !== 0) {
+        finalGlobalQty = stock.quantity + globalDelta;
+        if (finalGlobalQty < 0) throw { status: 400, message: 'Transaksi ini akan mengakibatkan stok negatif.' };
+        await tx.stock.update({
+          where: { productId: pid },
+          data: { quantity: finalGlobalQty }
+        });
+      }
 
-      // Create transaction record
+      // 5. Create transaction record
       const transaction = await tx.transaction.create({
         data: {
-          itemId: parseInt(itemId),
+          productId: pid,
           type,
           quantity: qty,
           referenceNo,
-          supplierId: supplierId ? parseInt(supplierId) : null,
+          boxId: boxId ? parseInt(boxId) : null,
+          note: type === 'MOVE' ? `${note || ''} (Pindah ke Box ID ${targetBoxId})`.trim() : note,
           userId: req.user.id,
-          note,
         },
         include: {
-          item: { select: { id: true, name: true, sku: true, unit: true } },
+          product: { select: { id: true, name: true, sku: true, unit: true } },
           user: { select: { id: true, name: true, role: true } },
         },
       });
 
-      return { transaction, newStock: newQty };
+      return { transaction, newStock: finalGlobalQty };
     });
 
     res.status(201).json(result);
@@ -113,9 +187,8 @@ transactionsRouter.get('/export', async (req, res, next) => {
     const transactions = await prisma.transaction.findMany({
       where,
       include: {
-        item: { select: { name: true, sku: true, unit: true } },
+        product: { select: { name: true, sku: true, unit: true } },
         user: { select: { name: true } },
-        supplier: { select: { name: true } },
       },
       orderBy: { date: 'desc' },
     });
@@ -144,7 +217,7 @@ transactionsRouter.get('/export', async (req, res, next) => {
       sheet.getCell('A2').font = { italic: true };
     }
 
-    const headerRow = sheet.addRow(['No', 'Date', 'SKU', 'Item Name', 'Type', 'Quantity', 'Unit', 'Reference No', 'Supplier', 'User', 'Note']);
+    const headerRow = sheet.addRow(['No', 'Date', 'SKU', 'Product Name', 'Type', 'Quantity', 'Unit', 'Reference No', 'User', 'Note']);
     headerRow.eachCell((cell) => {
       cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3b82f6' } };
@@ -154,20 +227,19 @@ transactionsRouter.get('/export', async (req, res, next) => {
     sheet.columns = [
       { width: 5 }, { width: 20 }, { width: 15 }, { width: 30 },
       { width: 10 }, { width: 10 }, { width: 8 }, { width: 20 },
-      { width: 20 }, { width: 15 }, { width: 30 },
+      { width: 15 }, { width: 30 },
     ];
 
     transactions.forEach((t, i) => {
       const row = sheet.addRow([
         i + 1,
         new Date(t.date).toLocaleString('id-ID'),
-        t.item.sku,
-        t.item.name,
+        t.product.sku,
+        t.product.name,
         t.type,
         t.quantity,
-        t.item.unit,
+        t.product.unit,
         t.referenceNo || '-',
-        t.supplier?.name || '-',
         t.user.name,
         t.note || '-',
       ]);
@@ -199,3 +271,5 @@ transactionsRouter.get('/export', async (req, res, next) => {
     next(err);
   }
 });
+
+export default transactionsRouter;

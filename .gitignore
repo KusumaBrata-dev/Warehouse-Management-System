@@ -32,3 +32,5 @@ backend/logs/
 # Logs
 logs/
 *.log
+
+/generated/prisma

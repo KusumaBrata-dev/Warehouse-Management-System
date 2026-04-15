@@ -1,0 +1,24 @@
+{
+  "name": "wherehouse-inventory-root",
+  "version": "1.0.0",
+  "description": "Root configuration for Warehouse Inventory System",
+  "scripts": {
+    "db:start": "C:\\pgsql\\bin\\pg_ctl.exe -D \"C:\\pgsql\\data\" -l \"D:\\Coding\\Wherehouse Inventory\\pg.log\" start || echo Postgres already running",
+    "dev": "npm run db:start && concurrently --raw --kill-others \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\" \"npm run studio\"",
+    "start": "npm run dev",
+    "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend",
+    "backend": "npm run dev --prefix backend",
+    "frontend": "npm run dev --prefix frontend",
+    "studio": "npm run db:studio --prefix backend",
+    "dev:windows": "START-SYSTEM.bat"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "localtunnel": "^2.0.2",
+    "prisma": "^7.7.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.7.0",
+    "l": "^0.6.0"
+  }
+}

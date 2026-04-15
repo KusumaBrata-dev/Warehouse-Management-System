@@ -6,6 +6,18 @@ import { authenticate, requireAdmin } from '../middleware/auth.js';
 export const usersRouter = Router();
 usersRouter.use(authenticate);
 
+// Non-admin list for dropdowns
+usersRouter.get('/list', async (req, res, next) => {
+  try {
+    const users = await prisma.user.findMany({
+      select: { id: true, name: true, role: true },
+      where: { isActive: true },
+      orderBy: { name: 'asc' },
+    });
+    res.json(users);
+  } catch (err) { next(err); }
+});
+
 // Admin-only routes
 usersRouter.get('/', requireAdmin, async (req, res, next) => {
   try {

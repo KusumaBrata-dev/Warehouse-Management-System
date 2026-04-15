@@ -29,20 +29,21 @@ api.interceptors.response.use(
 export const login = (username, password) =>
   api.post('/auth/login', { username, password }).then(r => r.data);
 
-// ── Items ─────────────────────────────────────────────────────────────────
-export const getItems = (params) => api.get('/items', { params }).then(r => r.data);
-export const getItem  = (id)     => api.get(`/items/${id}`).then(r => r.data);
-export const createItem = (data) => api.post('/items', data).then(r => r.data);
-export const updateItem = (id, data) => api.put(`/items/${id}`, data).then(r => r.data);
-export const deleteItem = (id)   => api.delete(`/items/${id}`).then(r => r.data);
-export const getItemQR  = (id)   => `/api/items/${id}/qr`;
-export const getItemBarcode = (id) => `/api/items/${id}/barcode`;
+// ── Products ─────────────────────────────────────────────────────────────
+export const getProducts = (params) => api.get('/products', { params }).then(r => r.data);
+export const getProduct  = (id)     => api.get(`/products/${id}`).then(r => r.data);
+export const createProduct = (data) => api.post('/products', data).then(r => r.data);
+export const updateProduct = (id, data) => api.put(`/products/${id}`, data).then(r => r.data);
+export const deleteProduct = (id)   => api.delete(`/products/${id}`).then(r => r.data);
+export const getProductQR  = (id)   => `/api/products/${id}/qr`;
+export const getProductBarcode = (id) => `/api/products/${id}/barcode`;
+export const exportProductsExcel = () => `/api/products/export/excel`;
 
 // ── Stock ─────────────────────────────────────────────────────────────────
 export const getStock = () => api.get('/stock').then(r => r.data);
 
 // ── Scan ─────────────────────────────────────────────────────────────────
-export const scanItem = (sku) => api.get(`/scan/${encodeURIComponent(sku)}`).then(r => r.data);
+export const scanProduct = (sku) => api.get(`/scan/${encodeURIComponent(sku)}`).then(r => r.data);
 
 // ── Transactions ──────────────────────────────────────────────────────────
 export const getTransactions = (params) => api.get('/transactions', { params }).then(r => r.data);
@@ -52,20 +53,40 @@ export const exportTransactions = (params) => {
   return `/api/transactions/export?${query}`;
 };
 
-// ── Suppliers ─────────────────────────────────────────────────────────────
-export const getSuppliers  = ()        => api.get('/suppliers').then(r => r.data);
-export const createSupplier = (data)   => api.post('/suppliers', data).then(r => r.data);
-export const updateSupplier = (id, d)  => api.put(`/suppliers/${id}`, d).then(r => r.data);
-export const deleteSupplier = (id)     => api.delete(`/suppliers/${id}`).then(r => r.data);
-
 // ── Users ─────────────────────────────────────────────────────────────────
 export const getUsers  = ()        => api.get('/users').then(r => r.data);
 export const createUser = (data)   => api.post('/users', data).then(r => r.data);
 export const updateUser = (id, d)  => api.put(`/users/${id}`, d).then(r => r.data);
 export const deleteUser = (id)     => api.delete(`/users/${id}`).then(r => r.data);
 
+// ── Locations ─────────────────────────────────────────────────────────────
+export const getFloors     = ()        => api.get('/locations/floors').then(r => r.data);
+export const getLocations   = (floorId) => api.get('/locations', { params: { floorId } }).then(r => r.data);
+export const createPallet   = (data)    => api.post('/locations/pallets', data).then(r => r.data);
+export const createBox      = (data)    => api.post('/locations/boxes', data).then(r => r.data);
+export const deleteBox      = (id)      => api.delete(`/locations/boxes/${id}`).then(r => r.data);
+export const searchGlobal  = (q)       => api.get('/locations/search', { params: { q } }).then(r => r.data);
+export const getBoxInventory = ()      => api.get('/locations/box-inventory').then(r => r.data);
+export const getLocationQR = (type, id) => `/api/locations/qr?type=${type}&id=${id}`;
+
+// ── Boxes ────────────────────────────────────────────────────────────────
+export const updateBox = (id, data) => api.put('/locations/boxes/' + id, data).then(r => r.data);
+
+// ── Suppliers (WMS Milestone 1) ──────────────────────────────────────────
+export const getSuppliers   = ()        => api.get('/suppliers').then(r => r.data);
+export const createSupplier = (data)    => api.post('/suppliers', data).then(r => r.data);
+export const updateSupplier = (id, data) => api.put(`/suppliers/${id}`, data).then(r => r.data);
+export const deleteSupplier = (id)      => api.delete(`/suppliers/${id}`).then(r => r.data);
+
+// ── Purchase Orders (WMS Milestone 1) ─────────────────────────────────────
+export const getPurchaseOrders = ()      => api.get('/purchase-orders').then(r => r.data);
+export const getPurchaseOrder  = (id)    => api.get(`/purchase-orders/${id}`).then(r => r.data);
+export const createPurchaseOrder = (data) => api.post('/purchase-orders', data).then(r => r.data);
+export const cancelPurchaseOrder = (id) => api.put(`/purchase-orders/${id}/cancel`).then(r => r.data);
+export const receivePurchaseOrder = (id, data) => api.post(`/purchase-orders/${id}/receive`, data).then(r => r.data);
+
 // ── Rack ──────────────────────────────────────────────────────────────────
-export const getRack   = (itemId)  => api.get(`/rack/${itemId}`).then(r => r.data);
+export const getRack   = (productId)  => api.get(`/rack/${productId}`).then(r => r.data);
 export const createRack = (data)   => api.post('/rack', data).then(r => r.data);
 export const updateRack = (id, d)  => api.put(`/rack/${id}`, d).then(r => r.data);
 export const deleteRack = (id)     => api.delete(`/rack/${id}`).then(r => r.data);
