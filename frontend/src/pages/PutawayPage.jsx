@@ -136,12 +136,19 @@ export default function PutawayPage() {
     setStatus(STATUS.MOVING);
     setError('');
     try {
-      const palletId = itemData.type === 'pallet' ? itemData.id : itemData.palletId;
+      // If it's a box, we need its parent pallet ID
+      // itemData structure from scan.js: { type: 'box', id: 1, palletCode: '...', pallet: { id: 123, rackLevelId: 456 } }
+      const palletId = itemData.type === 'pallet' ? itemData.id : itemData.pallet?.id;
+      
+      if (!palletId) {
+         throw new Error('Pallet ID tidak ditemukan untuk item ini.');
+      }
+
       await api.patch(`/locations/pallets/${palletId}/move`, { newLevelId: finalTargetId });
       setResult({ item: itemData.code, from: 'Incoming Area', to: destCode || 'Rak' });
       setStatus(STATUS.DONE);
     } catch (err) {
-      setError(err.response?.data?.error || 'Gagal memindahkan pallet.');
+      setError(err.response?.data?.error || err.message || 'Gagal memindahkan pallet.');
       setStatus(STATUS.DEST_FOUND);
     }
   };

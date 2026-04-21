@@ -81,28 +81,63 @@ purchaseOrdersRouter.post('/', requireAdminOrPPIC, async (req, res, next) => {
 purchaseOrdersRouter.post('/:id/receive', requireAdminOrPPIC, validate(receivePOSchema), async (req, res, next) => {
   try {
     const poId = parseInt(req.params.id);
-    const { products: receivedProducts } = req.validData; // Array of { productId, quantity, boxId, lotNumber } from Zod
+    const { products: receivedProducts, palletCode, note } = req.validData;
 
     const po = await prisma.purchaseOrder.findUnique({
       where: { id: poId },
-      include: { products: true },
+      include: { products: true, supplier: true },
     });
 
     if (!po) return res.status(404).json({ error: 'PO not found' });
     if (po.status === 'RECEIVED') return res.status(400).json({ error: 'PO already received' });
 
+    // ── Find INCOMING Area ─────────────────────────────────────────────────
+    const incomingFloor = await prisma.floor.findFirst({
+      where: { name: 'Incoming Area' },
+      include: { racks: { include: { sections: { include: { levels: true } } } } }
+    });
+    if (!incomingFloor) return res.status(500).json({ error: 'Incoming Area tidak ditemukan.' });
+    const firstLevel = incomingFloor.racks[0]?.sections[0]?.levels[0];
+    if (!firstLevel) return res.status(500).json({ error: 'Struktur rak Incoming Area belum di-seed.' });
+
     await prisma.$transaction(async (tx) => {
+      const ts = Date.now();
+
+      // ── Resolve Pallet ──
+      let pallet;
+      if (palletCode) {
+        pallet = await tx.pallet.findUnique({ where: { code: palletCode } });
+        if (!pallet) {
+          pallet = await tx.pallet.create({
+            data: { code: palletCode, name: `Pallet PO ${po.poNumber}`, rackLevelId: firstLevel.id, status: 'LOCKED' }
+          });
+        } else {
+          await tx.pallet.update({ where: { id: pallet.id }, data: { status: 'LOCKED' } });
+        }
+      } else {
+        pallet = await tx.pallet.create({
+          data: { code: `PLT-PO-${ts}`, name: `Pallet PO ${po.poNumber}`, rackLevelId: firstLevel.id, status: 'LOCKED' }
+        });
+      }
+
+      // ── Resolve Box ──
+      // For POs, we'll create a dedicated box for this receipt batch unless one is provided
+      let box = await tx.box.create({
+        data: {
+          code: `BOX-PO-${ts}`,
+          name: `Inbound PO ${po.poNumber}`,
+          status: 'RECEIVED',
+          palletId: pallet.id
+        }
+      });
+
       for (const rx of receivedProducts) {
         const pid = parseInt(rx.productId);
         const qty = parseInt(rx.quantity);
-        const bid = parseInt(rx.boxId);
         const lot = rx.lotNumber || '';
+        const bid = rx.boxId ? parseInt(rx.boxId) : box.id;
 
-        // Validate Box exists
-        const box = await tx.box.findUnique({ where: { id: bid } });
-        if (!box) throw { status: 404, message: `Box ID ${bid} tidak ditemukan.` };
-
-        // 1. Create Transaction (IN) — logs arrival at INCOMING
+        // 1. Transaction (IN)
         await tx.transaction.create({
           data: {
             productId: pid,
@@ -112,32 +147,44 @@ purchaseOrdersRouter.post('/:id/receive', requireAdminOrPPIC, validate(receivePO
             boxId: bid,
             purchaseOrderId: poId,
             toLocationCode: 'INCOMING',
-            note: `Received from PO ${po.poNumber} → Incoming Area`,
+            note: [
+              note,
+              `PO: ${po.poNumber}`,
+              `Supplier: ${po.supplier.name}`,
+              `Pallet: ${pallet.code}`,
+              lot ? `Lot: ${lot}` : null
+            ].filter(Boolean).join(' | '),
           },
         });
 
-        // 2. Update Global Stock
+        // 2. Global Stock
         await tx.stock.upsert({
           where: { productId: pid },
           update: { quantity: { increment: qty } },
           create: { productId: pid, quantity: qty },
         });
 
-        // 3. Update BoxProduct (Physical Location)
+        // 3. BoxProduct
         await tx.boxProduct.upsert({
           where: { boxId_productId_lotNumber: { boxId: bid, productId: pid, lotNumber: lot } },
           update: { quantity: { increment: qty } },
           create: { boxId: bid, productId: pid, quantity: qty, lotNumber: lot },
         });
 
-        // 4. Mark Box as RECEIVED (in Incoming Area staging)
+        // 4. Mark box as RECEIVED
         await tx.box.update({
           where: { id: bid },
           data: { status: 'RECEIVED' },
         });
       }
 
-      // 4. Update PO Status
+      // 5. Unlock Pallet
+      await tx.pallet.update({
+        where: { id: pallet.id },
+        data: { status: 'RECEIVED' }
+      });
+
+      // 6. Update PO Status
       await tx.purchaseOrder.update({
         where: { id: poId },
         data: { status: 'RECEIVED' },

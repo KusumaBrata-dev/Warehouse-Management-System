@@ -39,14 +39,10 @@ authRouter.post('/login', async (req, res, next) => {
 });
 
 // GET /api/auth/me
-authRouter.get('/me', async (req, res, next) => {
+authRouter.get('/me', authenticate, async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ error: 'No token' });
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
+      where: { id: req.user.id },
       select: { id: true, username: true, name: true, role: true, isActive: true },
     });
     res.json(user);

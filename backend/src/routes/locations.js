@@ -776,7 +776,7 @@ locationsRouter.delete('/pallets/:id', requireAdmin, async (req, res, next) => {
 });
 
 // DELETE /api/locations/levels/:id
-locationsRouter.delete('/levels/:id', async (req, res, next) => {
+locationsRouter.delete('/levels/:id', requireAdmin, async (req, res, next) => {
   try {
     await prisma.rackLevel.delete({ where: { id: parseInt(req.params.id) } });
     res.json({ message: 'Level Rak berhasil dihapus' });
@@ -786,7 +786,7 @@ locationsRouter.delete('/levels/:id', async (req, res, next) => {
 });
 
 // DELETE /api/locations/sections/:id
-locationsRouter.delete('/sections/:id', async (req, res, next) => {
+locationsRouter.delete('/sections/:id', requireAdmin, async (req, res, next) => {
   try {
     await prisma.section.delete({ where: { id: parseInt(req.params.id) } });
     res.json({ message: 'Seksi/Kolom berhasil dihapus' });
@@ -796,7 +796,7 @@ locationsRouter.delete('/sections/:id', async (req, res, next) => {
 });
 
 // DELETE /api/locations/racks/:id
-locationsRouter.delete('/racks/:id', async (req, res, next) => {
+locationsRouter.delete('/racks/:id', requireAdmin, async (req, res, next) => {
   try {
     await prisma.rack.delete({ where: { id: parseInt(req.params.id) } });
     res.json({ message: 'Rak berhasil dihapus' });

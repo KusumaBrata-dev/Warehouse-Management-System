@@ -41,6 +41,8 @@ export const moveBulkSchema = z.object({
 });
 
 export const receivePOSchema = z.object({
+  palletCode: z.string().optional(),
+  note: z.string().optional(),
   products: z
     .array(
       z.object({
@@ -52,7 +54,7 @@ export const receivePOSchema = z.object({
           (val) => parseInt(val, 10),
           z.number().positive(),
         ),
-        boxId: z.preprocess((val) => parseInt(val, 10), z.number().positive()),
+        boxId: z.preprocess((val) => (val ? parseInt(val, 10) : undefined), z.number().positive().optional()),
         lotNumber: z.string().optional().default(""),
       }),
     )

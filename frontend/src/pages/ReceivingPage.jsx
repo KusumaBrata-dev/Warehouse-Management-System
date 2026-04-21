@@ -168,12 +168,15 @@ export default function ReceivingPage() {
 
   // ── Submit PO ─────────────────────────────────────────────────────────
   const handlePoSubmit = async () => {
+    if (!selectedPo) return;
     setLoading(true); setError('');
     try {
       await receivePurchaseOrder(selectedPo.id, {
-        products: poItems.map(it => ({ productId: it.productId, quantity: it.quantity, boxId: it.boxId || 1 }))
+        palletCode: palletCode || undefined,
+        note: note || undefined,
+        products: poItems.map(it => ({ productId: it.productId, quantity: it.quantity, lotNumber: it.lotNumber || '' }))
       });
-      setSuccess({ palletCode: 'Dari PO', boxCode: selectedPo.poNumber, count: poItems.length });
+      setSuccess({ palletCode: palletCode || 'Auto-Gen', boxCode: selectedPo.poNumber, count: poItems.length });
     } catch (err) {
       setError(err.response?.data?.error || 'Gagal memproses PO.');
     } finally {
@@ -274,55 +277,54 @@ export default function ReceivingPage() {
         </div>
       )}
 
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+          <div>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>📦 Identitas Pallet / Staging</div>
+            <StatusBadge startTime={sessionStart.current} />
+          </div>
+          {palletLocked && (
+            <button onClick={() => { setPalletCode(''); setPalletLocked(false); }} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#f87171', cursor: 'pointer' }}>
+              <X size={12} style={{ display: 'inline', marginRight: 4 }} />Ganti Pallet
+            </button>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <input
+              type="text"
+              value={palletCode}
+              onChange={e => { setPalletCode(e.target.value); setPalletLocked(!!e.target.value); }}
+              placeholder="Scan atau ketik kode pallet (kosongkan = auto-buat)..."
+              disabled={palletLocked && !!palletCode}
+              style={{
+                width: '100%', boxSizing: 'border-box', padding: '11px 14px',
+                background: palletLocked ? 'rgba(16,185,129,0.07)' : 'var(--bg-input)',
+                border: `1px solid ${palletLocked ? 'rgba(16,185,129,0.4)' : 'var(--border)'}`,
+                borderRadius: 10, color: 'var(--text-white)', fontSize: 14, outline: 'none',
+                fontFamily: palletLocked ? 'monospace' : 'inherit',
+                fontWeight: palletLocked ? 700 : 400,
+              }}
+            />
+          </div>
+          <button
+            onClick={() => openScanner('pallet')}
+            className="btn btn-outline"
+            style={{ padding: '11px 14px', flexShrink: 0 }}
+            title="Scan QR Pallet"
+          >
+            <ScanLine size={18} />
+          </button>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+          💡 Identitas ini akan digunakan untuk seluruh barang dalam sesi inbound ini
+        </div>
+      </div>
+
       {/* ═══ DIRECT MODE ═══ */}
       {mode === 'direct' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-          {/* Status + Pallet Identity */}
-          <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
-              <div>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>📦 Identitas Pallet</div>
-                <StatusBadge startTime={sessionStart.current} />
-              </div>
-              {palletLocked && (
-                <button onClick={() => { setPalletCode(''); setPalletLocked(false); }} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#f87171', cursor: 'pointer' }}>
-                  <X size={12} style={{ display: 'inline', marginRight: 4 }} />Ganti Pallet
-                </button>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <div style={{ flex: 1, position: 'relative' }}>
-                <input
-                  type="text"
-                  value={palletCode}
-                  onChange={e => { setPalletCode(e.target.value); setPalletLocked(!!e.target.value); }}
-                  placeholder="Scan atau ketik kode pallet (kosongkan = auto-buat)..."
-                  disabled={palletLocked && !!palletCode}
-                  style={{
-                    width: '100%', boxSizing: 'border-box', padding: '11px 14px',
-                    background: palletLocked ? 'rgba(16,185,129,0.07)' : 'var(--bg-input)',
-                    border: `1px solid ${palletLocked ? 'rgba(16,185,129,0.4)' : 'var(--border)'}`,
-                    borderRadius: 10, color: 'var(--text-white)', fontSize: 14, outline: 'none',
-                    fontFamily: palletLocked ? 'monospace' : 'inherit',
-                    fontWeight: palletLocked ? 700 : 400,
-                  }}
-                />
-              </div>
-              <button
-                onClick={() => openScanner('pallet')}
-                className="btn btn-outline"
-                style={{ padding: '11px 14px', flexShrink: 0 }}
-                title="Scan QR Pallet"
-              >
-                <ScanLine size={18} />
-              </button>
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
-              💡 Kosongkan untuk auto-generate kode pallet baru · Scan pallet fisik untuk reuse
-            </div>
-          </div>
 
           {/* Product List */}
           <div className="card">

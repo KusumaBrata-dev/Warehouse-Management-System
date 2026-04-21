@@ -5,11 +5,11 @@ import { authenticate } from "../middleware/auth.js";
 export const rackRouter = Router();
 rackRouter.use(authenticate);
 
-// GET /api/rack/:itemId
-rackRouter.get("/:itemId", async (req, res, next) => {
+// GET /api/rack/:productId
+rackRouter.get("/:productId", async (req, res, next) => {
   try {
     const racks = await prisma.rackLocation.findMany({
-      where: { itemId: parseInt(req.params.itemId) },
+      where: { productId: parseInt(req.params.productId) },
       orderBy: { rackCode: "asc" },
     });
     res.json(racks);
@@ -21,15 +21,15 @@ rackRouter.get("/:itemId", async (req, res, next) => {
 // POST /api/rack — Assign rack to item
 rackRouter.post("/", async (req, res, next) => {
   try {
-    const { itemId, rackCode, row, level, notes } = req.body;
-    if (!itemId || !rackCode || !row || level === undefined) {
+    const { productId, rackCode, row, level, notes } = req.body;
+    if (!productId || !rackCode || !row || level === undefined) {
       return res
         .status(400)
-        .json({ error: "itemId, rackCode, row, and level are required" });
+        .json({ error: "productId, rackCode, row, and level are required" });
     }
     const rack = await prisma.rackLocation.create({
       data: {
-        itemId: parseInt(itemId),
+        productId: parseInt(productId),
         rackCode: rackCode.toUpperCase(),
         row: row.toUpperCase(),
         level: parseInt(level),

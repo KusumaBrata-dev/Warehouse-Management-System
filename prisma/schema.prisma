@@ -57,6 +57,7 @@ model Product {
 model Stock {
   id               Int      @id @default(autoincrement())
   quantity         Int      @default(0)
+  reservedQuantity Int      @default(0) @map("reserved_quantity")
   lastUpdated      DateTime @default(now()) @updatedAt @map("last_updated")
   productId        Int      @unique @map("product_id")
   product          Product  @relation(fields: [productId], references: [id], onDelete: Cascade)

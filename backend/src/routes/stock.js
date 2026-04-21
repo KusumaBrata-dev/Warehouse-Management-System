@@ -88,7 +88,9 @@ stockRouter.get('/', async (req, res, next) => {
       });
       return { 
         ...s, 
-        locationPath: locations.length > 0 ? locations[0] : (locations.length > 1 ? `${locations[0]} (+${locations.length - 1} more)` : 'Belum Ada Lokasi') 
+        locationPath: locations.length > 1 
+          ? `${locations[0]} (+${locations.length - 1} more)` 
+          : (locations.length === 1 ? locations[0] : 'Belum Ada Lokasi') 
       };
     });
 
