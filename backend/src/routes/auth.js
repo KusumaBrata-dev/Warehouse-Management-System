@@ -2,16 +2,20 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma.js';
+import { authenticate } from '../middleware/auth.js';
 
 export const authRouter = Router();
 
 // POST /api/auth/login
 authRouter.post('/login', async (req, res, next) => {
   try {
-    const { username, password } = req.body;
+    let { username, password } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
+
+    username = username.trim().toLowerCase();
+    password = password.trim();
 
     const user = await prisma.user.findUnique({ where: { username } });
     if (!user || !user.isActive) {

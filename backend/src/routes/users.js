@@ -31,8 +31,13 @@ usersRouter.get('/', requireAdmin, async (req, res, next) => {
 
 usersRouter.post('/', requireAdmin, async (req, res, next) => {
   try {
-    const { username, password, name, role } = req.body;
+    let { username, password, name, role } = req.body;
     if (!username || !password || !name) return res.status(400).json({ error: 'username, password, name required' });
+    
+    username = username.trim().toLowerCase();
+    password = password.trim();
+    name = name.trim();
+
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await prisma.user.create({
       data: { username, passwordHash, name, role: role || 'STAFF' },
@@ -47,9 +52,16 @@ usersRouter.post('/', requireAdmin, async (req, res, next) => {
 
 usersRouter.put('/:id', requireAdmin, async (req, res, next) => {
   try {
-    const { name, role, isActive, password } = req.body;
-    const data = { name, role, isActive };
-    if (password) data.passwordHash = await bcrypt.hash(password, 12);
+    let { name, role, isActive, password } = req.body;
+    const data = {};
+    if (name) data.name = name.trim();
+    if (role) data.role = role;
+    if (isActive !== undefined) data.isActive = isActive;
+    
+    if (password && password.trim()) {
+      data.passwordHash = await bcrypt.hash(password.trim(), 12);
+    }
+
     const user = await prisma.user.update({
       where: { id: parseInt(req.params.id) },
       data,

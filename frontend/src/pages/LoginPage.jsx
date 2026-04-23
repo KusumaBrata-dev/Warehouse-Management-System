@@ -18,7 +18,7 @@ export default function LoginPage() {
       return toast.error("Username dan password harus diisi");
     setLoading(true);
     try {
-      await login(username, password);
+      await login(username.trim(), password);
       toast.success("Login berhasil!");
       
       // Redirect to the intended page or dashboard
