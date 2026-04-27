@@ -14,16 +14,20 @@ export default function DashboardPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    Promise.all([
+    Promise.allSettled([
       getStock(),
       getTransactions({ limit: 10 }),
       getFloors(),
       getOccupancyStats(),
     ]).then(([stock, tx, floorData, occ]) => {
-      setStockData(stock);
-      setRecentTx(tx.transactions);
-      setFloors(floorData);
-      setOccupancy(occ);
+      if (stock.status === 'fulfilled') setStockData(stock.value);
+      if (tx.status === 'fulfilled') setRecentTx(tx.value.transactions);
+      if (floorData.status === 'fulfilled') setFloors(floorData.value);
+      if (occ.status === 'fulfilled') {
+        setOccupancy(occ.value);
+      } else {
+        setOccupancy({ totalSlots: 0, usedSlots: 0, overallPercent: 0 });
+      }
     }).finally(() => setLoading(false));
   }, []);
 

@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { authRouter } from "./routes/auth.js";
 import { productsRouter } from "./routes/products.js";
 import { stockRouter } from "./routes/stock.js";
@@ -20,20 +22,42 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const isProd = process.env.NODE_ENV === "production";
+
+const rawAllowedOrigins = [
+  process.env.FRONTEND_URL,
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+].filter(Boolean);
+const allowedOrigins = new Set(rawAllowedOrigins);
+
+if (isProd && (!process.env.JWT_SECRET || process.env.JWT_SECRET.toLowerCase().includes("changeme"))) {
+  throw new Error("JWT_SECRET is missing or weak. Set a secure random secret before running in production.");
+}
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many auth attempts. Please try again later." },
+});
 
 // ── Middleware ─────────────────────────────────────────────────────────────
+app.use(helmet());
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow all origins in LAN (no origin = direct access, postman, etc.)
-      callback(null, true);
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.has(origin)) return callback(null, true);
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
     },
     credentials: true,
   }),
 );
-
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
+app.use("/api/auth/login", authLimiter);
 
 // ── Health Check ───────────────────────────────────────────────────────────
 app.get("/", (req, res) => {

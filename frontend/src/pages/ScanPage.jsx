@@ -269,7 +269,7 @@ function AddProductModal({ boxId, boxCode, initialProduct, onClose, onAdded }) {
     setLoading(true);
     try {
       const { data } = await api.get(`/products?search=${query}`);
-      setResults(data);
+      setResults(data.products || []);
     } catch (err) {
       toast.error("Gagal mengambil data");
     } finally {
@@ -766,13 +766,19 @@ export default function ScanPage() {
 
   const handleIssue = async () => {
     if (!scanResult) return;
+    if (!scanResult.boxes?.length) {
+      toast.error("Produk ini belum memiliki box lokasi untuk transaksi OUT.");
+      return;
+    }
     setIssuing(true);
     try {
+      const sourceBox = scanResult.boxes[0];
       await createTransaction({
         productId: scanResult.id,
         type: "OUT",
         quantity: issueQty,
-        note: issueNote,
+        boxId: sourceBox.id,
+        note: issueNote || `OUT dari Box ${sourceBox.code}`,
       });
       toast.success("Berhasil");
       setScanResult((prev) => ({

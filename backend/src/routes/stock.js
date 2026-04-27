@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, requireAdminOrPPIC } from '../middleware/auth.js';
 import multer from 'multer';
 import ExcelJS from 'exceljs';
 
@@ -12,7 +12,7 @@ stockRouter.use(authenticate);
 // GET /api/stock — Dashboard summary and paginated inventory list
 stockRouter.get('/', async (req, res, next) => {
   try {
-    const { page = 1, limit = 50, search = '' } = req.query;
+    const { page = 1, limit = 50, search = '', filter = 'all' } = req.query;
     const p = parseInt(page);
     const l = parseInt(limit);
 
@@ -26,54 +26,67 @@ stockRouter.get('/', async (req, res, next) => {
        };
     }
 
-    // Parallel fetch for counts/summary and paginated data
-    const [stocks, total, totalQty, lowStockCount, outOfStockCount] = await Promise.all([
-      prisma.stock.findMany({
-        where,
-        include: {
-          product: { 
-            include: { 
-              category: true, 
-              boxProducts: {
-                include: {
-                  box: {
-                    include: {
-                      pallet: {
-                        include: {
-                          rackLevel: {
-                            include: {
-                              section: {
-                                include: {
-                                  rack: {
-                                    include: { floor: true }
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            } 
+    const summaryRows = await prisma.stock.findMany({
+      where,
+      select: {
+        id: true,
+        quantity: true,
+        product: { select: { minStock: true } },
+      },
+    });
+
+    const lowStockCount = summaryRows.filter((s) => s.quantity > 0 && s.quantity <= (s.product?.minStock ?? 0)).length;
+    const outOfStockCount = summaryRows.filter((s) => s.quantity === 0).length;
+    const totalQty = summaryRows.reduce((acc, s) => acc + s.quantity, 0);
+
+    const filteredIds = summaryRows
+      .map((s) => ({ id: s.id, quantity: s.quantity, minStock: s.product?.minStock ?? 0 }))
+      .filter((s) => {
+        if (filter === 'low') return s.quantity > 0 && s.quantity <= s.minStock;
+        if (filter === 'out') return s.quantity === 0;
+        return true;
+      })
+      .map((s) => s.id);
+
+    const allStocks = await prisma.stock.findMany({
+      where,
+      include: {
+        product: {
+          include: {
+            category: true,
+            boxProducts: {
+              include: {
+                box: {
+                  include: {
+                    pallet: {
+                      include: {
+                        rackLevel: {
+                          include: {
+                            section: {
+                              include: {
+                                rack: {
+                                  include: { floor: true },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
-        orderBy: { product: { name: 'asc' } },
-        skip: (p - 1) * l,
-        take: l,
-      }),
-      prisma.stock.count({ where }),
-      prisma.stock.aggregate({ _sum: { quantity: true }, where }),
-      prisma.stock.count({ 
-        where: { 
-          ...where,
-          quantity: { gt: 0, lte: 10 } // simplified low stock check or use specific field
-        } 
-      }),
-      prisma.stock.count({ where: { ...where, quantity: 0 } })
-    ]);
+      },
+      orderBy: { product: { name: 'asc' } },
+    });
+
+    const idSet = new Set(filteredIds);
+    const stocksFiltered = allStocks.filter((row) => idSet.has(row.id));
+    const total = stocksFiltered.length;
+    const stocks = stocksFiltered.slice((p - 1) * l, (p - 1) * l + l);
 
     // Format location strings for frontend (only for the paginated subset)
     const stocksWithPath = stocks.map(s => {
@@ -99,7 +112,7 @@ stockRouter.get('/', async (req, res, next) => {
         total, 
         lowStock: lowStockCount, 
         outOfStock: outOfStockCount, 
-        totalQty: totalQty._sum.quantity || 0 
+        totalQty
       }, 
       stocks: stocksWithPath,
       pagination: {
@@ -115,7 +128,7 @@ stockRouter.get('/', async (req, res, next) => {
 });
 
 // POST /api/stock/import-odoo — Import from Odoo Excel
-stockRouter.post('/import-odoo', upload.single('file'), async (req, res, next) => {
+stockRouter.post('/import-odoo', requireAdminOrPPIC, upload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Tidak ada file yang diunggah' });
 

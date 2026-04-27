@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, requireAdminOrPPIC } from '../middleware/auth.js';
 
 export const suppliersRouter = Router();
 
@@ -19,7 +19,7 @@ suppliersRouter.get('/', async (req, res, next) => {
 });
 
 // POST /api/suppliers
-suppliersRouter.post('/', async (req, res, next) => {
+suppliersRouter.post('/', requireAdminOrPPIC, async (req, res, next) => {
   try {
     const { name, code, address, phone } = req.body;
     if (!name || !code) return res.status(400).json({ error: 'Name and Code are required' });
@@ -35,7 +35,7 @@ suppliersRouter.post('/', async (req, res, next) => {
 });
 
 // PUT /api/suppliers/:id
-suppliersRouter.put('/:id', async (req, res, next) => {
+suppliersRouter.put('/:id', requireAdminOrPPIC, async (req, res, next) => {
   try {
     const { name, code, address, phone } = req.body;
     const supplier = await prisma.supplier.update({
@@ -50,7 +50,7 @@ suppliersRouter.put('/:id', async (req, res, next) => {
 });
 
 // DELETE /api/suppliers/:id
-suppliersRouter.delete('/:id', async (req, res, next) => {
+suppliersRouter.delete('/:id', requireAdminOrPPIC, async (req, res, next) => {
   try {
     await prisma.supplier.delete({ where: { id: parseInt(req.params.id) } });
     res.json({ message: 'Supplier deleted successfully' });

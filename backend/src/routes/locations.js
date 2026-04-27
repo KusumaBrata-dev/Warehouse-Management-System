@@ -67,6 +67,28 @@ locationsRouter.get('/floors', async (req, res, next) => {
   }
 });
 
+// GET /api/locations/stats/occupancy — Warehouse occupancy summary
+locationsRouter.get('/stats/occupancy', async (req, res, next) => {
+  try {
+    const levels = await prisma.rackLevel.findMany({
+      select: { id: true, maxPallets: true, pallets: { select: { id: true } } },
+    });
+
+    const totalSlots = levels.reduce((acc, lvl) => acc + (lvl.maxPallets || 20), 0);
+    const usedSlots = levels.reduce((acc, lvl) => acc + lvl.pallets.length, 0);
+    const overallPercent = totalSlots > 0 ? Math.round((usedSlots / totalSlots) * 100) : 0;
+
+    res.json({
+      totalSlots,
+      usedSlots,
+      availableSlots: Math.max(totalSlots - usedSlots, 0),
+      overallPercent,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/locations/personal — List items assigned to specific persons
 locationsRouter.get('/personal', async (req, res, next) => {
   try {
@@ -287,7 +309,7 @@ locationsRouter.get('/search', async (req, res, next) => {
 });
 
 // POST /api/locations/racks — Add new rack row to a floor
-locationsRouter.post('/racks', async (req, res, next) => {
+locationsRouter.post('/racks', requireAdmin, async (req, res, next) => {
   try {
     const { letter, floorId } = req.body;
     const rack = await prisma.rack.create({
@@ -300,7 +322,7 @@ locationsRouter.post('/racks', async (req, res, next) => {
 });
 
 // POST /api/locations/sections — Add new section (column) to a rack
-locationsRouter.post('/sections', async (req, res, next) => {
+locationsRouter.post('/sections', requireAdmin, async (req, res, next) => {
   try {
     const { number, rackId } = req.body;
     const section = await prisma.section.create({
@@ -313,7 +335,7 @@ locationsRouter.post('/sections', async (req, res, next) => {
 });
 
 // POST /api/locations/levels — Add new level to a section
-locationsRouter.post('/levels', async (req, res, next) => {
+locationsRouter.post('/levels', requireAdmin, async (req, res, next) => {
   try {
     const { number, sectionId } = req.body;
     const level = await prisma.rackLevel.create({
@@ -335,7 +357,7 @@ function formatPath(level) {
 }
 
 // POST /api/locations/pallets — Register new pallet
-locationsRouter.post('/pallets', async (req, res, next) => {
+locationsRouter.post('/pallets', requireAdminOrPPIC, async (req, res, next) => {
   try {
     const { code, name, rackLevelId } = req.body;
     if (!code || !rackLevelId) return res.status(400).json({ error: 'Kode dan Level Rak wajib diisi' });
@@ -355,8 +377,49 @@ locationsRouter.post('/pallets', async (req, res, next) => {
   }
 });
 
+// POST /api/locations/boxes — Register new storage box in a pallet
+locationsRouter.post('/boxes', requireAdminOrPPIC, async (req, res, next) => {
+  try {
+    const { code, name, palletId } = req.body;
+    if (!code || !palletId) {
+      return res.status(400).json({ error: 'Kode box dan palletId wajib diisi' });
+    }
+
+    const pallet = await prisma.pallet.findUnique({ where: { id: parseInt(palletId, 10) } });
+    if (!pallet) return res.status(404).json({ error: 'Pallet tidak ditemukan' });
+
+    const boxCount = await prisma.box.count({ where: { palletId: pallet.id } });
+    if (boxCount >= (pallet.maxBoxes || 80)) {
+      return res.status(400).json({ error: `Pallet sudah penuh (maks ${pallet.maxBoxes || 80} box)` });
+    }
+
+    const box = await prisma.box.create({
+      data: {
+        code: code.trim(),
+        name: name?.trim() || null,
+        palletId: pallet.id,
+        status: 'RECEIVED',
+      },
+      include: {
+        pallet: {
+          include: {
+            rackLevel: {
+              include: { section: { include: { rack: { include: { floor: true } } } } },
+            },
+          },
+        },
+      },
+    });
+
+    res.status(201).json(box);
+  } catch (err) {
+    if (err.code === 'P2002') return res.status(409).json({ error: 'Kode box sudah digunakan' });
+    next(err);
+  }
+});
+
 // POST /api/locations/boxes/personal — Register new personal box
-locationsRouter.post('/boxes/personal', async (req, res, next) => {
+locationsRouter.post('/boxes/personal', requireAdminOrPPIC, async (req, res, next) => {
   try {
     const { code, name, holderId } = req.body;
     if (!code || !holderId) return res.status(400).json({ error: 'Kode dan Pemegang (Staff) wajib diisi' });
@@ -378,7 +441,7 @@ locationsRouter.post('/boxes/personal', async (req, res, next) => {
 });
 
 // PUT /api/locations/boxes/:id — Update box info
-locationsRouter.put('/boxes/:id', async (req, res, next) => {
+locationsRouter.put('/boxes/:id', requireAdminOrPPIC, async (req, res, next) => {
   try {
     const { id } = req.params;
     const { name, code } = req.body;
@@ -387,6 +450,35 @@ locationsRouter.put('/boxes/:id', async (req, res, next) => {
       data: { name, code }
     });
     res.json(box);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/locations/boxes/:id/history — Backward-compatible alias for box history
+locationsRouter.get('/boxes/:id/history', async (req, res, next) => {
+  try {
+    const boxId = parseInt(req.params.id, 10);
+    const { limit = 30 } = req.query;
+
+    const [box, history] = await Promise.all([
+      prisma.box.findUnique({
+        where: { id: boxId },
+        select: { id: true, code: true, name: true },
+      }),
+      prisma.transaction.findMany({
+        where: { boxId },
+        include: {
+          product: { select: { id: true, name: true, sku: true, unit: true } },
+          user: { select: { id: true, name: true, role: true } },
+        },
+        orderBy: { date: 'desc' },
+        take: parseInt(limit, 10),
+      }),
+    ]);
+
+    if (!box) return res.status(404).json({ error: 'Box not found' });
+    res.json({ box, history });
   } catch (err) {
     next(err);
   }

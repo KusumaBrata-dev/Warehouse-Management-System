@@ -106,12 +106,32 @@ purchaseOrdersRouter.post('/:id/receive', requireAdminOrPPIC, validate(receivePO
       // ── Resolve Pallet ──
       let pallet;
       if (palletCode) {
-        pallet = await tx.pallet.findUnique({ where: { code: palletCode } });
+        pallet = await tx.pallet.findUnique({
+          where: { code: palletCode },
+          include: {
+            rackLevel: {
+              include: { section: { include: { rack: { include: { floor: true } } } } },
+            },
+            boxes: { include: { boxProducts: true } },
+          },
+        });
         if (!pallet) {
           pallet = await tx.pallet.create({
             data: { code: palletCode, name: `Pallet PO ${po.poNumber}`, rackLevelId: firstLevel.id, status: 'LOCKED' }
           });
         } else {
+          const floorName = pallet.rackLevel?.section?.rack?.floor?.name;
+          const hasInventory = pallet.boxes.some((b) => b.boxProducts.length > 0);
+          const isInIncoming = floorName === 'Incoming Area';
+          const isEmpty = !hasInventory;
+
+          if (!isInIncoming && !isEmpty) {
+            throw { status: 409, message: `Pallet "${palletCode}" berada di ${floorName} dan masih berisi stok aktif.` };
+          }
+          if (pallet.status === 'LOCKED') {
+            throw { status: 423, message: `Pallet "${palletCode}" sedang dikunci proses inbound lain.` };
+          }
+
           await tx.pallet.update({ where: { id: pallet.id }, data: { status: 'LOCKED' } });
         }
       } else {
@@ -135,7 +155,16 @@ purchaseOrdersRouter.post('/:id/receive', requireAdminOrPPIC, validate(receivePO
         const pid = parseInt(rx.productId);
         const qty = parseInt(rx.quantity);
         const lot = rx.lotNumber || '';
-        const bid = rx.boxId ? parseInt(rx.boxId) : box.id;
+        let bid = box.id;
+        if (rx.boxId) {
+          const requestedBoxId = parseInt(rx.boxId);
+          const existingBox = await tx.box.findUnique({ where: { id: requestedBoxId } });
+          if (!existingBox) throw { status: 404, message: `Box ID ${requestedBoxId} tidak ditemukan` };
+          if (existingBox.palletId !== pallet.id) {
+            throw { status: 400, message: `Box ID ${requestedBoxId} tidak berada pada pallet ${pallet.code}` };
+          }
+          bid = requestedBoxId;
+        }
 
         // 1. Transaction (IN)
         await tx.transaction.create({
