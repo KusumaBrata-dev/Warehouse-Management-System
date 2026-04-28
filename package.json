@@ -3,14 +3,18 @@
   "version": "1.0.0",
   "description": "Root configuration for Warehouse Inventory System",
   "scripts": {
-    "db:start": "C:\\pgsql\\bin\\pg_ctl.exe -D \"C:\\pgsql\\data\" -l \"D:\\Coding\\Wherehouse Inventory\\pg.log\" start || echo Postgres already running",
+    "db:start": "C:\\pgsql\\bin\\pg_ctl.exe -D \"C:\\pgsql\\data\" status >NUL 2>&1 && echo Postgres already running || C:\\pgsql\\bin\\pg_ctl.exe -D \"C:\\pgsql\\data\" -l \"D:\\Coding\\Wherehouse Inventory\\pg.log\" start",
+    "bootstrap:mobile": "npm run db:start && npm run db:push --prefix backend && npm run db:create-admin --prefix backend",
+    "bootstrap:mobile:reset": "npm run db:start && npm run db:push --prefix backend && npm run db:seed --prefix backend && npm run db:create-admin --prefix backend",
     "dev": "npm run db:start && concurrently --raw --kill-others \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\" \"npm run studio\"",
+    "dev:mobile": "npm run db:start && concurrently --raw --kill-others \"npm run dev --prefix backend\" \"npm run start --prefix mobile\"",
     "start": "npm run dev",
-    "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend",
+    "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend && npm install --prefix mobile",
     "backend": "npm run dev --prefix backend",
     "frontend": "npm run dev --prefix frontend",
+    "mobile": "npm run start --prefix mobile",
     "studio": "npm run db:studio --prefix backend",
-    "dev:windows": "START-SYSTEM.bat"
+    "dev:windows": "npm run dev"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

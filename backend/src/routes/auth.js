@@ -1,4 +1,4 @@
-  import { Router } from 'express';
+import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma.js';
@@ -17,12 +17,44 @@ authRouter.post('/login', async (req, res, next) => {
     username = username.trim().toLowerCase();
     password = password.trim();
 
-    const user = await prisma.user.findUnique({ where: { username } });
+    const user = await prisma.user.findFirst({
+      where: {
+        username: {
+          equals: username,
+          mode: 'insensitive',
+        },
+      },
+    });
     if (!user || !user.isActive) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (user.username !== username) {
+      try {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { username },
+        });
+      } catch {
+        // Ignore normalization failure (e.g. duplicate), login still proceeds.
+      }
+    }
+
+    const hash = String(user.passwordHash || '');
+    let valid = false;
+
+    // Backward compatibility: accept legacy plaintext password rows once, then migrate to bcrypt.
+    if (hash.startsWith('$2a$') || hash.startsWith('$2b$') || hash.startsWith('$2y$')) {
+      valid = await bcrypt.compare(password, hash);
+    } else if (hash.length > 0 && password === hash) {
+      valid = true;
+      const passwordHash = await bcrypt.hash(password, 12);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash },
+      });
+    }
+
     if (!valid) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }

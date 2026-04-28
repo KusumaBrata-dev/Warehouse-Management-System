@@ -6,7 +6,7 @@ export const transactionSchema = z
     type: z.enum(["IN", "OUT", "ADJUST", "MOVE"]),
     quantity: z.preprocess(
       (val) => parseInt(val, 10),
-      z.number().int().positive("Quantity must be positive"),
+      z.number().int().nonnegative("Quantity must be zero or positive"),
     ),
     referenceNo: z.string().optional().nullable(),
     note: z.string().optional().nullable(),
@@ -20,19 +20,40 @@ export const transactionSchema = z
     ),
     lotNumber: z.string().optional().default(""),
   })
-  .refine(
-    (data) => {
-      if (data.type === "MOVE") {
-        return data.boxId !== undefined && data.targetBoxId !== undefined;
+  .superRefine((data, ctx) => {
+    if (data.type !== "ADJUST" && data.quantity <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["quantity"],
+        message: "Quantity must be positive for IN/OUT/MOVE",
+      });
+    }
+
+    if ((data.type === "IN" || data.type === "OUT") && data.boxId === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["boxId"],
+        message: "boxId is required for IN/OUT",
+      });
+    }
+
+    if (data.type === "MOVE") {
+      if (data.boxId === undefined || data.targetBoxId === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["type"],
+          message: "Source box (boxId) and destination box (targetBoxId) are required for MOVE",
+        });
       }
-      return true;
-    },
-    {
-      message:
-        "Source box (boxId) and destination box (targetBoxId) are required for MOVE",
-      path: ["type"],
-    },
-  );
+      if (data.boxId !== undefined && data.targetBoxId !== undefined && data.boxId === data.targetBoxId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["targetBoxId"],
+          message: "targetBoxId must be different from boxId for MOVE",
+        });
+      }
+    }
+  });
 
 export const moveBulkSchema = z.object({
   sourceType: z.enum(["RACK", "COLUMN", "LEVEL"]),

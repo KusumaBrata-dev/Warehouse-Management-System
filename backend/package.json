@@ -7,11 +7,14 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "db:generate": "prisma generate --schema=../prisma/schema.prisma",
-    "db:migrate": "prisma migrate dev --schema=../prisma/schema.prisma",
-    "db:push": "prisma db push --schema=../prisma/schema.prisma",
+    "test": "node --test \"src/**/*.test.js\"",
+    "test:integration": "node --test \"src/**/*.integration.test.js\"",
+    "db:generate": "prisma generate --schema=../prisma/schema.prisma --config ../prisma.config.ts",
+    "db:migrate": "prisma migrate dev --schema=../prisma/schema.prisma --config ../prisma.config.ts",
+    "db:push": "prisma db push --schema=../prisma/schema.prisma --config ../prisma.config.ts",
     "db:studio": "prisma studio --port 49152 --browser none --config ../prisma.config.ts",
     "db:seed": "node src/seeds/restore-hierarchy.js",
+    "db:create-admin": "node src/seeds/create-admin.js",
     "db:clear-products": "node src/seeds/clear-products.js"
   },
   "keywords": [],

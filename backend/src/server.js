@@ -21,15 +21,50 @@ import { errorHandler } from "./middleware/errorHandler.js";
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3002;
 const isProd = process.env.NODE_ENV === "production";
 
-const rawAllowedOrigins = [
-  process.env.FRONTEND_URL,
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
-].filter(Boolean);
-const allowedOrigins = new Set(rawAllowedOrigins);
+const parseAllowedOrigins = () => {
+  const extras = String(process.env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+
+  return new Set(
+    [
+      process.env.FRONTEND_URL,
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
+      ...extras,
+    ].filter(Boolean),
+  );
+};
+
+const isPrivateIPv4 = (hostname) => {
+  const parts = hostname.split(".").map((p) => Number.parseInt(p, 10));
+  if (parts.length !== 4 || parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)) {
+    return false;
+  }
+  if (parts[0] === 10) return true;
+  if (parts[0] === 192 && parts[1] === 168) return true;
+  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+  return false;
+};
+
+const isDevAllowedOrigin = (origin) => {
+  try {
+    const parsed = new URL(origin);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+
+    const host = parsed.hostname;
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1") return true;
+    return isPrivateIPv4(host);
+  } catch {
+    return false;
+  }
+};
+
+const allowedOrigins = parseAllowedOrigins();
 
 if (isProd && (!process.env.JWT_SECRET || process.env.JWT_SECRET.toLowerCase().includes("changeme"))) {
   throw new Error("JWT_SECRET is missing or weak. Set a secure random secret before running in production.");
@@ -43,13 +78,13 @@ const authLimiter = rateLimit({
   message: { error: "Too many auth attempts. Please try again later." },
 });
 
-// ── Middleware ─────────────────────────────────────────────────────────────
 app.use(helmet());
 app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
       if (allowedOrigins.has(origin)) return callback(null, true);
+      if (!isProd && isDevAllowedOrigin(origin)) return callback(null, true);
       return callback(new Error(`CORS blocked for origin: ${origin}`));
     },
     credentials: true,
@@ -59,12 +94,11 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use("/api/auth/login", authLimiter);
 
-// ── Health Check ───────────────────────────────────────────────────────────
 app.get("/", (req, res) => {
   res.send(`
     <html>
       <body style="font-family: system-ui, sans-serif; text-align: center; margin-top: 50px; background: #0f1629; color: white;">
-        <h2>🟢 Warehouse API Server is Running</h2>
+        <h2>Warehouse API Server is Running</h2>
         <p>Aplikasi Frontend Anda berada port 5173.</p>
         <p>Silakan buka: <a href="http://localhost:5173" style="color: #6366f1;">http://localhost:5173</a></p>
       </body>
@@ -80,7 +114,6 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// ── Routes ─────────────────────────────────────────────────────────────────
 app.use("/api/auth", authRouter);
 app.use("/api/products", productsRouter);
 app.use("/api/stock", stockRouter);
@@ -95,13 +128,10 @@ app.use("/api/purchase-orders", purchaseOrdersRouter);
 app.use("/api/categories", categoriesRouter);
 app.use("/api/opname", opnameRouter);
 
-// ── Error Handler ──────────────────────────────────────────────────────────
 app.use(errorHandler);
 
-// ── Start Server ───────────────────────────────────────────────────────────
-// Bind to 0.0.0.0 for LAN access
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`\n🚀 Warehouse API Server running`);
+  console.log(`\nWarehouse API Server running`);
   console.log(`   Local:   http://localhost:${PORT}`);
   console.log(`   Network: http://0.0.0.0:${PORT}`);
   console.log(`   Env:     ${process.env.NODE_ENV}\n`);
